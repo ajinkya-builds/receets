@@ -1,0 +1,171 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  password        String
+  name            String
+  role            UserRole  @default(MERCHANT_STAFF)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  merchantId      String?
+  merchant        Merchant? @relation(fields: [merchantId], references: [id])
+  sessionTokens   SessionToken[]
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  MERCHANT_ADMIN
+  MERCHANT_STAFF
+  CUSTOMER
+}
+
+model SessionToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Merchant {
+  id              String    @id @default(uuid())
+  name            String
+  email           String    @unique
+  phone           String?
+  address         String?
+  logo            String?
+  returnPeriod    Int       @default(7) // Return period in days
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  users           User[]
+  locations       Location[]
+  sales           Sale[]
+  customers       Customer[]
+}
+
+model Location {
+  id              String    @id @default(uuid())
+  name            String
+  address         String
+  phone           String?
+  merchantId      String
+  merchant        Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  qrCode          QRCode?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  sales           Sale[]
+}
+
+model QRCode {
+  id              String    @id @default(uuid())
+  code            String    @unique
+  locationId      String    @unique
+  location        Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Customer {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  name            String?
+  phone           String?
+  customerCode    String    @unique // Used for POS integration
+  merchantId      String
+  merchant        Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  sales           Sale[]
+}
+
+model Sale {
+  id              String      @id @default(uuid())
+  merchantId      String
+  merchant        Merchant    @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  locationId      String
+  location        Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  customerId      String?
+  customer        Customer?   @relation(fields: [customerId], references: [id])
+  saleType        SaleType    @default(PURCHASE)
+  status          SaleStatus  @default(DRAFT)
+  totalAmount     Float
+  discountAmount  Float       @default(0)
+  taxAmount       Float       @default(0)
+  finalAmount     Float
+  promoCode       String?
+  paymentMethod   PaymentMethod?
+  referenceId     String?     // POS transaction reference ID
+  parentSaleId    String?     // For returns, reference to original sale
+  parentSale      Sale?       @relation("SaleToSale", fields: [parentSaleId], references: [id])
+  childSales      Sale[]      @relation("SaleToSale")
+  lineItems       LineItem[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+enum SaleType {
+  PURCHASE
+  RETURN
+  EXCHANGE
+}
+
+enum SaleStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  RECEETS_PAY
+  APPLE_PAY
+  GOOGLE_PAY
+  CASH
+  CARD
+  NO_PAYMENT // For exchanges with equal value
+}
+
+model LineItem {
+  id              String    @id @default(uuid())
+  saleId          String
+  sale            Sale      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId       String
+  productName     String
+  sku             String?
+  price           Float
+  quantity        Int       // Can be negative for returns
+  discountAmount  Float     @default(0)
+  totalAmount     Float
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model POSIntegration {
+  id              String    @id @default(uuid())
+  merchantId      String    @unique
+  apiKey          String    @unique
+  apiSecret       String
+  posProvider     String
+  webhookUrl      String?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
